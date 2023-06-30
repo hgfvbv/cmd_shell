@@ -1,6 +1,6 @@
 #ifndef __CMD_HANDLER_H__
 #define __CMD_HENDLER_H__
-#define DEBUG
+//#define DEBUG
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

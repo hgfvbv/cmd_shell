@@ -1,5 +1,6 @@
 #include "cmd_handle.h"
 #include "cmd_cp.h"
+#include "cmd_ls.h"
 
 void init_command_struct(cmd_t *pcmd)
 {
@@ -71,7 +72,7 @@ int cmd_dispatch(cmd_t *pcmd)
 	if(NULL == pcmd)
 		return -1;
 	if(strncmp(pcmd->cmd_name, "ls", 2) == 0){
-		printf("ls\n");
+		cmd_ls_execute(pcmd);	
 	}else if(strncmp(pcmd->cmd_name, "cp", 2) == 0){
 		cmd_cp_execute(pcmd);
 	}else{
