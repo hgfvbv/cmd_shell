@@ -1,168 +1,132 @@
 #include "cmd_handle.h"
 #include "cmd_cp.h"
 
-int cmd_cp_execute(cmd_t *pcmd)
+void cp_execute(cmd_t* cmd_info)
 {
-	if(NULL == pcmd || pcmd->cmd_arg_count != 2)
-		return -1;
-	cp_file_info_t *pfileinfo = NULL;
-	int ret = -1;
-	pfileinfo = (cp_file_info_t*)malloc(sizeof(cp_file_info_t));
-	ret = cmd_cp_parse_path(pfileinfo, pcmd);
-	if(-1 == ret)
-		return -1;
-	ret = cmd_cp_parse_type(pfileinfo);
-	if(-1 == ret)
-		return -1;
-	ret = cmd_cp_dispatch(pfileinfo);
-	if(-1 == ret)
-		return -1;
-	return 0;
+	if(NULL == cmd_info)
+		return;
+	cp_file_info_t cp_file_info;
+	cp_file_info_parse(&cp_file_info, cmd_info);
+	cp_file_info_type(&cp_file_info);
+	cp_file_info_dispatch(&cp_file_info);
 }
 
-int cmd_cp_parse_path(cp_file_info_t *pfileinfo, cmd_t *pcmd)
+void cp_file_info_parse(cp_file_info_t *cp_file_info, cmd_t *cmd_info)
 {
-	if(NULL == pfileinfo || NULL == pcmd)
-		return -1;
-	strcpy(pfileinfo->src_path, pcmd->cmd_arg_list[0]);
-	strcpy(pfileinfo->dest_path, pcmd->cmd_arg_list[1]);	
-#ifdef DEBUG
-	printf("src path : < %s >\n", pfileinfo->src_path);
-	printf("dest path : < %s >\n", pfileinfo->dest_path);
-#endif
-	return 0;
+	strcpy(cp_file_info->src, cmd_info->cmd_arg_list[0]);
+	strcpy(cp_file_info->dest, cmd_info->cmd_arg_list[1]);
 }
 
-int cmd_cp_parse_type(cp_file_info_t *pfileinfo)
+void cp_file_info_type(cp_file_info_t *cp_file_info)
 {
-	if(NULL == pfileinfo)
-		return -1;
-	int ret = -1;
 	enum file_type ftype;
-	ftype = get_file_type(pfileinfo->src_path);
+	ftype = get_file_type(cp_file_info->src);
 	if(FT_ERROR == ftype || FT_UNKNOW == ftype)
-		return -1;
-	else
-		pfileinfo->ftype = ftype;
-	return 0;
+		return;
+	cp_file_info->ftype = ftype;
 }
 
 enum file_type get_file_type(const char *path)
 {
-	if(NULL == path)
-		return FT_ERROR;
+	struct stat stat_info;
 	int ret = -1;
-	struct stat stat_info;	
 	ret = stat(path, &stat_info);
-	if(-1 == ret)
-	{
-		perror("stat(): ");
-		return FT_ERROR;	
+	if(-1 == ret){
+		perror("[ERROR] : stat() >> ");
+		return FT_ERROR;
 	}
 	if(S_ISDIR(stat_info.st_mode))
 		return FT_DIR;
 	else if(S_ISREG(stat_info.st_mode))
-		return FT_FILE;
+		return FT_FILE;	
 	return FT_UNKNOW;
 }
 
-int cmd_cp_dispatch(cp_file_info_t *pfileinfo)
+void cp_file_info_dispatch(cp_file_info_t *cp_file_info)
 {
-	if(FT_FILE == pfileinfo->ftype)
-		return cmd_cp_file(pfileinfo->src_path, pfileinfo->dest_path);
-	else if(FT_DIR == pfileinfo->ftype)
-		return cmd_cp_directory(pfileinfo->src_path, pfileinfo->dest_path);
+	if(FT_FILE == cp_file_info->ftype)
+		cp_file(cp_file_info->src, cp_file_info->dest);
+	else if(FT_DIR == cp_file_info->ftype)
+		cp_directory(cp_file_info->src, cp_file_info->dest);
 }
 
-int cmd_cp_file(const char *src, const char *dest)
+void cp_file(const char *src, const char *dest)
 {
-	if(NULL == src || NULL == dest)
-		return -1;
-	FILE *fp_src = NULL, *fp_dest = NULL;
-	size_t rbytes = 0, wbytes = 0;
-	char buffer[SZ_BUFFER] = {0};
-#ifdef DEBUG
-	printf("[DEBUG] : %s -----> %s\n", src, dest);
-#endif
-	fp_src = fopen(src, "r");
-	fp_dest = fopen(dest, "w+");
-	if(NULL == fp_src || NULL == fp_dest)
-		return -1;
+	FILE *fsrc;
+	FILE *fdest;
+	fsrc = fopen(src, "r");
+	fdest = fopen(dest, "w+");
+	if(NULL == fsrc || NULL == fdest){
+		perror("[ERROR] : fopen() >> ");
+		return;
+	}
+	size_t rbytes, wbytes;
+	char buffer[SZ_BUFFER];
 	while(1)
 	{
-		rbytes = fread(buffer, sizeof(char), SZ_BUFFER, fp_src);
-		if(rbytes != 0)
-		{
-			wbytes = fwrite(buffer, sizeof(char), rbytes, fp_dest);
-			if(wbytes != rbytes)
-			{
-				perror("fwrite(): ");
-				return -1;
-			}	
-		}else{
+		rbytes = fread(buffer, sizeof(char), SZ_BUFFER, fsrc);
+		if(rbytes != 0){
+			wbytes = fwrite(buffer, sizeof(char), rbytes, fdest);
+			if(wbytes != rbytes){
+				perror("[ERROR] : fwrite() >> ");
+				return;
+			}
+		}else
 			break;
-		}	
-	}
-	fclose(fp_src);
-	fclose(fp_dest);
-	return 0;
+	}	
+	fclose(fsrc);
+	fclose(fdest);
 }
 
-int cmd_cp_directory(const char *src, const char *dest)
+void cp_directory(const char *src, const char *dest)
 {
-	if(NULL == src || NULL == dest)
-		return -1;
 	enum file_type ftype;
 	ftype = get_file_type(src);
-	if(FT_ERROR == ftype || FT_UNKNOW == ftype)
-		return -1;
-	if(FT_DIR == ftype)
-	{
+	if(FT_ERROR == ftype || FT_UNKNOW == ftype){
+		perror("[ERROR] : file type >> ");
+		return;
+	}
+	if(FT_DIR == ftype){
 		int ret = -1;
 		ret = mkdir(dest, 0777);
 		if(-1 == ret){
-			perror("mkdir(): ");
-			return -1;
+			perror("[ERROR] : mkdir >> ");
+			return;
 		}
-		DIR *pdir = NULL;
-		pdir = opendir(src);
-		if(NULL == pdir){
-			perror("opendir(): ");
-			return -1;
+		DIR *dir;
+		dir = opendir(src);
+		if(NULL == dir){
+			perror("[ERROR] : opendir >> ");
+			return;
 		}
-		struct dirent *pdirent = NULL;
+		struct dirent *pdir;
 		cp_file_info_t info;
 		while(1)
 		{
-			pdirent = readdir(pdir);
-			if(NULL == pdirent)
+			pdir = readdir(dir);
+			if(NULL == pdir)
 				break;
-			if(strcmp(pdirent->d_name, ".") == 0 || strcmp(pdirent->d_name, "..") == 0)
+			if(strcmp(pdir->d_name, ".") == 0 || strcmp(pdir->d_name, "..") == 0)
 				continue;
-			make_path(&info, src, dest, pdirent->d_name);
-#ifdef DEBUG
-	printf("[DEBUG] : dest path : %s\n", info.dest_path);
-#endif
-			info.ftype = get_file_type(src);
+			make_path(&info, src, dest, pdir->d_name);	
+			info.ftype = get_file_type(info.src);
 			if(FT_DIR == info.ftype)
-				cmd_cp_directory(info.src_path, info.dest_path);
+				cp_directory(info.src, info.dest);
 			else if(FT_FILE == info.ftype)
-				cmd_cp_file(info.src_path, info.dest_path);	
-		}	
+				cp_file(info.src, info.dest);
+		}
 	}else if(FT_FILE == ftype)
-		cmd_cp_file(src, dest);
-	else
-		return 0;
+		cp_file(src, dest);	
 }
 
-void make_path(cp_file_info_t *pinfo, const char *spath, const char *dpath, const char *filename)
+void make_path(cp_file_info_t *cp_file_info, const char *src, const char *dest, const char *filename)
 {
-	memset(pinfo->src_path, 0, sizeof(pinfo->src_path));
-	memset(pinfo->dest_path, 0, sizeof(pinfo->dest_path));
-	strcpy(pinfo->src_path, spath);
-	strcat(pinfo->src_path, "/");
-	strcat(pinfo->src_path, filename);
-	strcpy(pinfo->dest_path, dpath);
-	strcat(pinfo->dest_path, "/");
-	strcat(pinfo->dest_path, filename);
+	memset(cp_file_info->src, 0, sizeof(cp_file_info->src));
+	memset(cp_file_info->dest, 0, sizeof(cp_file_info->dest));
+	strcpy(cp_file_info->src, src);
+	strcat(cp_file_info->src, "/");
+	strcat(cp_file_info->src, filename);
+	strcpy(cp_file_info->dest, dest);
+	strcat(cp_file_info->dest, "/");
+	strcat(cp_file_info->dest, filename);
 }

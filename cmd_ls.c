@@ -1,42 +1,35 @@
 #include "cmd_handle.h"
 #include "cmd_ls.h"
 
-int cmd_ls_execute(cmd_t *pcmd)
+void ls_execute(cmd_t *cmd_info)
 {
-	if(NULL == pcmd)
-		return -1;
-	if(pcmd->cmd_arg_count != 2){
-		fprintf(stderr, "Command argument Error.\n");
-		return -1;
-	}
-	if(pcmd->cmd_arg_list[1] != NULL)
-		return cmd_list_directory(pcmd->cmd_arg_list[1]);
-	else
-		return -1;
+	if(cmd_info->cmd_arg_count != 2)
+		return;
+	if(cmd_info->cmd_arg_list[1] != NULL)
+		ls_file_list(cmd_info->cmd_arg_list[1]);
 }
 
-int cmd_list_directory(const char *dirpath)
+void ls_file_list(const char *dirpath)
 {
 	DIR *pdir = NULL;
 	pdir = opendir(dirpath);
 	if(NULL == pdir){
-		perror("open(): ");
-		return -1;
-	}	
-	struct dirent *pdirent = NULL;
-	file_attr_t attr;
-	char path[128] = {0};
-	while((pdirent = readdir(pdir)) != NULL)
-	{
-		if(strcmp(pdirent->d_name, ".") == 0 || strcmp(pdirent->d_name, "..") == 0)
-			continue;
-		memset(&attr, 0, sizeof(attr));
-		make_path_ls(path, dirpath, pdirent->d_name);
-		get_file_attr(&attr, path, pdirent->d_name, DT_LNK == pdirent->d_type);	
-		show_file_attributes(&attr);
+		perror("[ERROR] : opendir() >> ");
+		return;
 	}
+	struct dirent *dir = NULL;
+	ls_file_info_t ls_file_info;
+	char path[128] = {0};
+	while((dir = readdir(pdir)) != NULL)
+	{
+		if(strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0)
+			continue;
+		memset(&ls_file_info, 0, sizeof(ls_file_info_t));
+		make_path_ls(path, dirpath, dir->d_name);	
+		get_file_attr(&ls_file_info, path, dir->d_name, DT_LNK == dir->d_type);
+		show_ls_file_info(&ls_file_info);
+	}	
 	closedir(pdir);
-	return 0;
 }
 
 void make_path_ls(char *path, const char *dirpath, const char *filename)
@@ -46,114 +39,109 @@ void make_path_ls(char *path, const char *dirpath, const char *filename)
 	strcat(path, filename);
 }
 
-int get_file_attr(file_attr_t *pattr, const char *path, const char *filename, bool islink)
+void get_file_attr(ls_file_info_t *ls_file_info, const char *path, const char *filename, bool islink)
 {
 	int ret = -1;
 	if(islink)
-		ret = lstat(path, &pattr->fattr_stat_info);
-       	else
-		ret = stat(path, &pattr->fattr_stat_info);
+		ret = lstat(path, &ls_file_info->stat_info);
+	else
+		ret = stat(path, &ls_file_info->stat_info);
 	if(-1 == ret){
-		perror("[ERROR] stat() : ");
-		return -1;
-	}	
-	get_file_type_ls(pattr);	
-	if('l' == pattr->f_attr_type){
-		ssize_t res = readlink(path, pattr->f_attr_link_content, sizeof(pattr->f_attr_link_content));
+		perror("[ERROR] : stat() >> ");
+		return;
+	}
+	get_file_type_ls(ls_file_info);
+	if('l' == ls_file_info->type){
+		ssize_t res = readlink(path, ls_file_info->link_content, sizeof(ls_file_info->link_content));
 		if(-1 == res){
-			perror("readlink(): ");
-			return -1;
+			perror("[ERROR] : readlink() >> ");
+			return;
 		}
 	}
-	get_file_permission(pattr);
-	get_file_uname(pattr);
-	get_file_gname(pattr);
-	get_file_last_modify_time(pattr);
-	strcpy(pattr->f_attr_name, filename);
-	return 0;
+	get_file_permission(ls_file_info);
+//	get_file_uname(ls_file_info);
+	get_file_gname(ls_file_info);
+	get_file_time(ls_file_info);
+	strcpy(ls_file_info->name, filename);
 }
 
-void get_file_type_ls(file_attr_t *pattr)
+void get_file_type_ls(ls_file_info_t *ls_file_info)
 {
-	mode_t mode = pattr->fattr_stat_info.st_mode;
-	printf("[DEBUG] : mode %#o\n", mode);
+	mode_t mode = ls_file_info->stat_info.st_mode;
 	switch(mode & S_IFMT)
 	{
 		case S_IFBLK:
-			pattr->f_attr_type = 'b';
+			ls_file_info->type = 'b';
 			break;
 		case S_IFCHR:
-			pattr->f_attr_type = 'c';
+			ls_file_info->type = 'c';
 			break;
 		case S_IFDIR:
-			pattr->f_attr_type = 'd';
+			ls_file_info->type = 'd';
 			break;
 		case S_IFIFO:
-			pattr->f_attr_type = 'p';
+			ls_file_info->type = 'p';
 			break;
 		case S_IFLNK:
-			pattr->f_attr_type = 'l';
+			ls_file_info->type = 'l';
 			break;
 		case S_IFREG:
-			pattr->f_attr_type = '-';
+			ls_file_info->type = '-';
 			break;
 		case S_IFSOCK:
-			pattr->f_attr_type = 's';
+			ls_file_info->type = 's';
 			break;
 		default:
 			break;	
 	}
 }
 
-void show_file_attributes(file_attr_t *pattr)
+void get_file_permission(ls_file_info_t *ls_file_info)
 {
-	printf(" %c", pattr->f_attr_type);
-	printf("%s ", pattr->f_attr_permission);
-	printf("%s ", pattr->f_attr_uname);
-	printf("%s ", pattr->f_attr_gname);
-	printf("%ld ", pattr->fattr_stat_info.st_size);
-	printf("%s ", pattr->f_attr_mtime);
-	if('l' == pattr->f_attr_type)
-		printf("%s -> %s", pattr->f_attr_name, pattr->f_attr_link_content);
-	else
-		printf("%s", pattr->f_attr_name);
-	putchar('\n');
-}
-
-void get_file_permission(file_attr_t *pattr)
-{
-	int index = 0;
+	mode_t mode = ls_file_info->stat_info.st_mode;
 	char perm[] = {'r', 'w', 'x'};
-	mode_t mode = pattr->fattr_stat_info.st_mode;
-	printf("[DEBUG] : mode %#o %#x\n", mode, mode);
+	int index = 0;
 	for(int i = 8; i >= 0; --i)
 	{
 		if((mode >> i) & 0x1)
-			pattr->f_attr_permission[index] = perm[index % 3];
+			ls_file_info->permission[index] = perm[index % 3];
 		else
-			pattr->f_attr_permission[index] = '-';
+			ls_file_info->permission[index] = '-';
 		index++;	
 	}
-	pattr->f_attr_permission[index] = '\0';
+	ls_file_info->permission[index] = '\0';
 }
 
-void get_file_uname(file_attr_t *pattr)
+void get_file_uname(ls_file_info_t *ls_file_info)
 {
-	printf("[DEBUG] : uid %#X\n", pattr->fattr_stat_info.st_uid);
-	struct passwd *pwd = getpwuid(pattr->fattr_stat_info.st_uid);
-	printf("[DEBUG] : pwd name %s\n", pwd->pw_name);
-	strcpy(pattr->f_attr_uname, pwd->pw_name);	
+	struct passwd *pw = getpwuid(ls_file_info->stat_info.st_uid);
+	strcpy(ls_file_info->uname, pw->pw_name);
 }
 
-void get_file_gname(file_attr_t *pattr)
+void get_file_gname(ls_file_info_t *ls_file_info)
 {
-	struct group *grp = getgrgid(pattr->fattr_stat_info.st_gid);
-	strcpy(pattr->f_attr_gname, grp->gr_name);
+	struct group *gr = getgrgid(ls_file_info->stat_info.st_gid);
+	strcpy(ls_file_info->gname, gr->gr_name);	
 }
 
-void get_file_last_modify_time(file_attr_t *pattr)
+void get_file_time(ls_file_info_t *ls_file_info)
 {
-	char *timestr = ctime(&(pattr->fattr_stat_info.st_mtime));
-	strcpy(pattr->f_attr_mtime, timestr);
-	pattr->f_attr_mtime[strlen(timestr) - 1] = '\0';
+	char *timestr = ctime(&(ls_file_info->stat_info.st_mtime));
+	strcpy(ls_file_info->mtime, timestr);
+	ls_file_info->mtime[strlen(timestr) - 1] = '\0';	
+}
+
+void show_ls_file_info(ls_file_info_t *ls_file_info)
+{
+	printf(" %c", ls_file_info->type);
+	printf("%s ", ls_file_info->permission);
+	printf("%s ", ls_file_info->uname);
+	printf("%s ", ls_file_info->gname);
+	printf("%ld ", ls_file_info->stat_info.st_size);
+	printf("%s ", ls_file_info->mtime);
+	if('l' == ls_file_info->type)
+		printf("%s -> %s", ls_file_info->name, ls_file_info->link_content);
+	else
+		printf("%s", ls_file_info->name);
+	putchar('\n');
 }

@@ -2,81 +2,59 @@
 #include "cmd_cp.h"
 #include "cmd_ls.h"
 
-void init_command_struct(cmd_t *pcmd)
+void cmd_execute(char *command)
 {
-	memset(pcmd->cmd_name, 0, sizeof(SZ_NAME));
-	for(int i = 0; i < SZ_COUNT; ++i)
-	{
-		memset(pcmd->cmd_arg_list[i], 0, sizeof(SZ_ARG));	
-	}
-	pcmd->cmd_arg_count = 0;
-}
-
-void print_command_info(cmd_t *pcmd)
-{
-	printf("==================\n");
-	printf("[DEBUG] : cmd name : < %s >\n", pcmd->cmd_name);
-	printf("[DEBUG] : cmd arg count : < %d >\n", pcmd->cmd_arg_count);
-	printf("[DEBUG] : cmd arg list : ");
-	for(int i = 0; i < SZ_COUNT; ++i)
-	{
-		printf(" %s ", pcmd->cmd_arg_list[i]);	
-	}
-	printf("\n==================\n");
-}
-
-int cmd_execute(char *cmd_str)
-{
-	if(NULL == cmd_str)
-		return -1;
+	if(NULL == command)
+		return;
+	cmd_t cmd_info;
+	init_command(&cmd_info);
+	cmd_info_parse(command, &cmd_info);
 #ifdef DEBUG
-	printf("[DEBUG] : cmd string : < %s >\n", cmd_str);
+	print_command(&cmd_info);
 #endif
-	cmd_t* command = (cmd_t*)malloc(sizeof(cmd_t));
-	init_command_struct(command);
-	int ret = -1;
-	ret = cmd_parse(cmd_str, command);
-	if(-1 == ret)
-		return -1;
-#ifdef DEBUG
-	print_command_info(command);
-#endif
-	ret = cmd_dispatch(command);
-	if(-1 == ret)
-		return -1;
-	return 1;
+	cmd_dispatch(&cmd_info);
 }
 
-int cmd_parse(char* cmd_str, cmd_t *pcmd)
+void init_command(cmd_t *cmd_info)
 {
-	if(NULL == cmd_str || NULL == pcmd)
-		return -1;
-	char *p_cmd_name = NULL;
-	char *p_cmd_arg = NULL;
+	memset(cmd_info->cmd_name, 0, sizeof(SZ_NAME));
+	for(int i = 0; i < SZ_COUNT; ++i)
+		memset(cmd_info->cmd_arg_list[i], 0, sizeof(SZ_ARG));
+	cmd_info->cmd_arg_count = 0;
+}
+
+void print_command(cmd_t *cmd_info)
+{
+	printf("================\n");
+	printf("[DEBUG] : cmd_name >> %s\n", cmd_info->cmd_name);
+	printf("[DEBUG] : cmd_arg_count >> %d\n", cmd_info->cmd_arg_count);
+	printf("[DEBUG] : cmd_arg_list >> ");
+	for(int i = 0; i < SZ_COUNT; ++i)
+		printf("%s ", cmd_info->cmd_arg_list[i]);
+	putchar('\n');
+	printf("================\n");
+}
+
+void cmd_info_parse(char *command, cmd_t *cmd_info)
+{
+	char *parse_str;
+	parse_str = strtok(command, " ");
+	strcpy(cmd_info->cmd_name, parse_str);
 	int index = 0;
-	p_cmd_name = strtok(cmd_str, " ");
-	strcpy(pcmd->cmd_name, p_cmd_name);
-	while(1)
+	while((parse_str = strtok(NULL, " ")) != NULL)
 	{
-		p_cmd_arg = strtok(NULL, " ");
-		if(NULL == p_cmd_arg)
-			break;	
-		strcpy(pcmd->cmd_arg_list[index++], p_cmd_arg);
-	}
-	pcmd->cmd_arg_count = index;
-	return 0;
+		strcpy(cmd_info->cmd_arg_list[index], parse_str);	
+		index++;	
+	}	
+	cmd_info->cmd_arg_count = index;
 }
 
-int cmd_dispatch(cmd_t *pcmd)
+void cmd_dispatch(cmd_t *cmd_info)
 {
-	if(NULL == pcmd)
-		return -1;
-	if(strncmp(pcmd->cmd_name, "ls", 2) == 0){
-		cmd_ls_execute(pcmd);	
-	}else if(strncmp(pcmd->cmd_name, "cp", 2) == 0){
-		cmd_cp_execute(pcmd);
-	}else{
-		printf("sorry, %s unextended.\n", pcmd->cmd_name);
-	}	
-	return 0;
+	if(strcmp(cmd_info->cmd_name, "cp") == 0)
+		cp_execute(cmd_info);
+	else if(strcmp(cmd_info->cmd_name, "ls") == 0)
+		ls_execute(cmd_info);
+	else
+		printf("%s unextened\n", cmd_info->cmd_name);
 }
